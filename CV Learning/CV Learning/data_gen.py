@@ -40,7 +40,6 @@ class ImageVocSequence(Sequence):
 
     def __len__(self):
         return int(np.ceil(len(self.x) / float(self.batch_size)))
-    asdf
     def get_anchor_points(w,h,stride):
         #Takes w, h of image as int or floats 
         #takes stride as int/float
