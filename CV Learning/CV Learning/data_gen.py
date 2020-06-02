@@ -99,11 +99,38 @@ class ImageVocSequence(Sequence):
     def non_max_suppression(boxes, ):
         return None
 
-    def preprocess_anchor_boxes(self,anchor_boxes):
+    def preprocess_anchor_boxes(anchor_boxes):
+        #takes in an output from generate_anchor_boxes
+
+        #returns a n*4 array containing x,y,w,h of anchor boxes. Order is anchor box at 0,0 0,1 0,2 ... 0,q, 1,0, 1,1 ... p,q
         arr_shape = anchor_boxes.shape
+        arr_flat = anchor_boxes.flatten()
+        temp_arr = []
+        arr_res = []
+        for v in range(len(arr_flat)/4):
+            temp_arr = [arr_flat[4*(v)], arr_flat[4*(v)+1], arr_flat[4*(v)+2], arr_flat[4*(v)+3]]
+            arr_res.append(temp_arr)
+        arr_res_np = np.array(arr_res)
+
+        return arr_res_np, arr_shape
         
     
+    def unflatten_anchor_boxes_arr(flat_arr, arr_shape):
+        #Inverse of preprocess_anchor_boxes
+        #array shape should be [p, q, sr, 4]
 
+        #returns a p*q*(s*r)*4 array
+
+        arr_res = np.zeros(arr_shape)
+        arr_len = len(flat_arr)
+
+        for i,arr in enumerate(flat_arr):
+            sr = i%arr_shape[2]
+            q = (i//arr_shape[2])%arr_shape[1]
+            p = i//(arr_shape[2]*arr_shape[1])
+            arr_res[p,q,sr] = arr
+
+        return arr_res
 
     def create_ytrue_train(self, labels, anchor_boxes, iou):
         gtclass, gtx, gty, gtw, gth = label
