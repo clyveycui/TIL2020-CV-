@@ -149,7 +149,7 @@ class ImageVocSequence(Sequence):
         for i,gt_box in enumerate(gt_box_arr):
             for j,anchor in enumerate(anchor_flat):
                 if (anchor[2] == 0):
-                    iou_score[i,j] = iou_lower
+                    iou_score[i,j] = -1
                 else:
                     iou_score[i,j] = self.iou(anchor, gt_box,img_arr.shape[1],img_arr.shape[0])
         #iou_score is a l*a array where l is the number of labels and a is the number of anchor boxes. 
@@ -232,13 +232,53 @@ class ImageVocSequence(Sequence):
 	    # integer data type
         return pick
 
+    def iou_sampling(pruned_anchor_box_indices, iou_scores, iou_upper=0.7, iou_lower=0.3):
+        #pruned_anchor_box_indices is the index of all the chosen anchor boxes after NMS. May want to remove the NMS step to make sure there's more entries
+        #iou_scores is the unpruned iou_scores
+        #iou_upper, iou_lower are floats between 1 and 0 representing the iou threshold for positive cases and negative cases
+
+        #returns 2 arrays containing 256 entries.
+        #pos_res is in the shape p*2, where each entry is in the form of (i, j) where i is the index of the anchor box chosen and j is the corresponding bounding box
+        #neg_res is in the shape n where each entry is the index of the anchor box chosen
+
+        #This part gets the positives
+        pos_res = []
+        pos_case_indices = []
+        candidate_indices = pruned_anchor_box_indices
+        pruned_iou = np.array([iou_scores[:,i] if i in pruned_anchor_box_indices else np.zeros(2) for i in range(iou_scores.shape[1])]).transpose()
+        indices_to_del = []
+        for i,_ in enumerate(iou_scores):
+            idx = np.argmax(iou_scores[i])
+            pos_res.append([idx,i])
+            pos_case_indices.append(idx)
+            candidate_indices = candidate_indices[candidate_indices != idx]
+            for f,j in enumerate(candidate_indices):
+                if iou_scores[i,j] > iou_upper:
+                    pos_res.append([j,i])
+                    indices_to_del.append(f)
+                    pos_case_indices.append(j)
+            candidate_indices = np.delete(candidate_indices, indices_to_del)
+            indices_to_del = []
+        pos_res = np.array(pos_res)
+        pos_count = pos_res.shape[0]
+
+        #This part gets the negatives
+        negative_candidate_indices = [i for i in range(iou_scores.shape[1]) if i not in pos_case_indices ]
+        neg_candidates = [i for i in negative_candidate_indices if np.all(iou_scores[:,i]<iou_lower) and np.all(iou_scores[:,i]>=0)]
+        neg_res = []
+        if len(neg_candidates) <= 256-pos_count:
+            neg_res = neg_candidates
+        else:
+            neg_res = np.random.choice(neg_candidates, size=256-pos_count, replace = False)
+        return pos_res, neg_res
+
     def prune_a_box(self, anchor_boxes_flat, iou, overlapThresh = 0.5):
         nms_pruned_indices = []
         for score in iou:
             nms_pruned_indices.append(non_max_suppression_fast(self.xywh_to_xyxy(anchor_boxes_flat), score, overlapThresh))
         nms_pruned_indices = np.array(nms_pruned_indices)
         nms_pruned_indices_unique = np.unique(nms_pruned_indices)
-        nms_pruned_iou = [iou[:,i] if i in nms_pruned_indices_unique else 0]
+        pos_box_indicex, neg_box_indices = self.iou_sampling(nms_pruned_indices_unique, iou, iou_upper=0.7, iou_lower=0.3)
 
 
     #def convert_labels_cxywh_to_arrays(self, labels, iou_threshold=0.5, exceed_thresh_positive=True):
