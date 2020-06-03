@@ -37,6 +37,7 @@ class ImageVocSequence(Sequence):
         self.dims = dims
         self.input_size = input_size
         self.iou = iou_fn
+        self.anchor_box_shape = None
 
     def __len__(self):
         return int(np.ceil(len(self.x) / float(self.batch_size)))
