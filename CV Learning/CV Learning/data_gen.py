@@ -1,5 +1,7 @@
 from tensorflow.python.keras.utils.data_utils import Sequence
+import tensorflow as tf
 import img_aug
+import numpy as np
 
 def iou(anchor_box, ground_truth_box, img_w, img_h):
     #anchor_box, ground_truth_box are size 4 arrays in the form [x_centre, y_centre, width, height]
@@ -29,12 +31,11 @@ def iou(anchor_box, ground_truth_box, img_w, img_h):
     return (i_area/u_area)
 
 class ImageVocSequence(Sequence):
-    def __init__(self, dataset, batch_size, augmentations, dims, input_size=(224,224,3), iou_fn=iou):
+    def __init__(self, dataset, batch_size, augmentations, input_size=(224,224,3), iou_fn=iou):
         self.x, self.y = zip(*dataset)
         self.x_acc, self.y_acc = [], []
         self.batch_size = batch_size
         self.augment = augmentations
-        self.dims = dims
         self.input_size = input_size
         self.iou = iou_fn
         self.anchor_box_shape = None
@@ -133,11 +134,112 @@ class ImageVocSequence(Sequence):
 
         return arr_res
 
-    def create_ytrue_train(self, labels, anchor_boxes, iou):
-        gtclass, gtx, gty, gtw, gth = label
-        gtclass = int(gtclass)
-        gt_bbox = [gtx, gty, gtw, gth]
-        anchor
+    def create_ytrue_train(self, img, labels, anchor_boxes, iou_upper = 0.7, iou_lower = 0.3):
+        img_arr = np.array(img)
+        gt_box_arr = []
+        for label in labels:
+            gtclass, gtx, gty, gtw, gth = label
+            gtclass = int(gtclass)
+            #Might change depends on how label is given
+            gt_bbox = [gtx, gty, gtw, gth]
+            gt_box_arr.append(gt_bbox)
+
+        anchor_flat, ytrue_shape = preprocess_anchor_boxes(anchor_boxes)
+        iou_score = np.zeros(len(gt_box_arr), len(anchor_flat))
+        for i,gt_box in enumerate(gt_box_arr):
+            for j,anchor in enumerate(anchor_flat):
+                if (anchor[2] == 0):
+                    iou_score[i,j] = iou_lower
+                else:
+                    iou_score[i,j] = self.iou(anchor, gt_box,img_arr.shape[1],img_arr.shape[0])
+        #iou_score is a l*a array where l is the number of labels and a is the number of anchor boxes. 
+        #It contains the iou score of every gt box against anchor box
+        
+    #pruning via non max suppression
+    def xywh_to_xyxy(box):
+        x, y, w, h = box
+        x_min = x-w/2.0
+        x_max = x+w/2.0
+        y_min = y-h/2.0
+        y_max = y+h/2.0
+        return (x_min,y_min,x_max,y_max)
+
+    # Malisiewicz et al.
+    def non_max_suppression_fast(boxes, iou, overlapThresh):
+        #boxes is an array of shape n*4 where n is the number of boxes and each box is in the form of (x1,y1,x2,y2)
+        #iou is the score of all the boxes against a gt box
+
+        #returns a 1D array containing all the indices of the boxes chosen
+
+        # if there are no boxes, return an empty list
+        if len(boxes) == 0:
+            return []
+
+        # if the bounding boxes integers, convert them to floats --
+        # this is important since we'll be doing a bunch of divisions
+        if boxes.dtype.kind == "i":
+            boxes = boxes.astype("float")
+
+        # initialize the list of picked indexes	
+        pick = []
+
+        # grab the coordinates of the bounding boxes
+        x1 = boxes[:,0]
+        y1 = boxes[:,1]
+        x2 = boxes[:,2]
+        y2 = boxes[:,3]
+
+        # compute the area of the bounding boxes and sort the bounding
+        # boxes by the bottom-right y-coordinate of the bounding box
+        area = (x2 - x1 + 1) * (y2 - y1 + 1)
+        idxs = np.argsort(y2)
+
+        # keep looping while some indexes still remain in the indexes
+        # list
+        while len(idxs) > 0:
+            # grab the last index in the indexes list and add the
+            # index value to the list of picked indexes
+            last = len(idxs) - 1
+            i = idxs[last]
+
+
+            # find the largest (x, y) coordinates for the start of
+            # the bounding box and the smallest (x, y) coordinates
+            # for the end of the bounding box
+            xx1 = np.maximum(x1[i], x1[idxs[:last]])
+            yy1 = np.maximum(y1[i], y1[idxs[:last]])
+            xx2 = np.minimum(x2[i], x2[idxs[:last]])
+            yy2 = np.minimum(y2[i], y2[idxs[:last]])
+
+            # compute the width and height of the bounding box
+            w = np.maximum(0, xx2 - xx1 + 1)
+            h = np.maximum(0, yy2 - yy1 + 1)
+
+            # compute the ratio of overlap
+            overlap = (w * h) / area[idxs[:last]]
+            overlap_box_indices = idxs[np.where(overlap > overlapThresh)[0]]
+            if len(overlap_box_indices) > 0:
+                i = overlap_box_indices[np.argmax(iou[overlap_box_indices])]
+            pick.append(i)
+            #iou_scores
+        
+
+            # delete all indexes from the index list that have
+            idxs = np.delete(idxs, np.concatenate(([last],
+	            np.where(overlap > overlapThresh)[0])))
+
+	    # return only the bounding boxes that were picked using the
+	    # integer data type
+        return pick
+
+    def prune_a_box(self, anchor_boxes_flat, iou, overlapThresh = 0.5):
+        nms_pruned_indices = []
+        for score in iou:
+            nms_pruned_indices.append(non_max_suppression_fast(self.xywh_to_xyxy(anchor_boxes_flat), score, overlapThresh))
+        nms_pruned_indices = np.array(nms_pruned_indices)
+        nms_pruned_indices_unique = np.unique(nms_pruned_indices)
+        nms_pruned_iou = [iou[:,i] if i in nms_pruned_indices_unique else 0]
+
 
     #def convert_labels_cxywh_to_arrays(self, labels, iou_threshold=0.5, exceed_thresh_positive=True):
     #    num_entries = 7 # objectness, p_cat, p_dog, dx, dy, dw, dh
