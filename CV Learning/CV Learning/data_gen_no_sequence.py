@@ -1,5 +1,7 @@
 import numpy as np
-import PIL
+from PIL import Image
+from math import log
+import sys
 
 def iou(anchor_box, ground_truth_box, img_w, img_h):
     #anchor_box, ground_truth_box are size 4 arrays in the form [x_centre, y_centre, width, height]
@@ -92,7 +94,7 @@ def preprocess_anchor_boxes(anchor_boxes):
     arr_flat = anchor_boxes.flatten()
     temp_arr = []
     arr_res = []
-    for v in range(len(arr_flat)/4):
+    for v in range(len(arr_flat)//4):
         temp_arr = [arr_flat[4*(v)], arr_flat[4*(v)+1], arr_flat[4*(v)+2], arr_flat[4*(v)+3]]
         arr_res.append(temp_arr)
     arr_res_np = np.array(arr_res)
@@ -243,15 +245,15 @@ def iou_sampling(pruned_anchor_box_indices, iou_scores, iou_upper=0.7, iou_lower
     return pos_res, neg_res
 
 def prune_a_box(anchor_boxes_flat, iou_scores):
-    anchor_box_indices = np.array(anchor_boxes_flat.shape[0])
+    anchor_box_indices = np.array(range(anchor_boxes_flat.shape[0]))
     pos_box_indices, neg_box_indices = iou_sampling(anchor_box_indices, iou_scores, iou_upper=0.7, iou_lower=0.3)
-    return 
+    return pos_box_indices, neg_box_indices
 
 
 
 def create_ytrue_train(img, labels, iou_upper = 0.7, iou_lower = 0.3):
     img_arr = np.array(img)
-    anchor_boxes = generate_anchor_boxes(img_arr.shape[1], img_arr.shape[0], stride=16, scale=[16,32,64], ratio=[0.5,1,2], no_exceed_bound = True)
+    anchor_boxes = generate_anchor_boxes(img_arr.shape[1], img_arr.shape[0], stride=16, scale=[32,64,128], ratio=[0.5,1,2], no_exceed_bound = True)
     gt_box_arr = []
     for label in labels:
         gtclass, gtx, gty, gtw, gth = label
@@ -261,7 +263,7 @@ def create_ytrue_train(img, labels, iou_upper = 0.7, iou_lower = 0.3):
         gt_box_arr.append(gt_bbox)
 
     anchor_flat, anchorbox_arr_shape = preprocess_anchor_boxes(anchor_boxes)
-    iou_score = np.zeros(len(gt_box_arr), len(anchor_flat))
+    iou_score = np.zeros((len(gt_box_arr), len(anchor_flat)))
     for i,gt_box in enumerate(gt_box_arr):
         for j,anchor in enumerate(anchor_flat):
             if (anchor[2] == 0):
@@ -269,20 +271,40 @@ def create_ytrue_train(img, labels, iou_upper = 0.7, iou_lower = 0.3):
             else:
                 iou_score[i,j] = iou(anchor, gt_box,img_arr.shape[1],img_arr.shape[0])
     pos_indices, neg_indices = prune_a_box(anchor_flat, iou_score)
-    y_class_true = np.zeros((anchor_box_arr_shape[0],anchor_box_arr_shape[1],anchor_box_arr_shape[2]*2))
+    y_class_true = np.empty((anchorbox_arr_shape[0],anchorbox_arr_shape[1],anchorbox_arr_shape[2]*2))
+    y_class_true.fill(-1)
+    y_regr_true = np.zeros((anchorbox_arr_shape[0],anchorbox_arr_shape[1],anchorbox_arr_shape[2]*4))
     for ai_gti in pos_indices:
         ai = ai_gti[0]
+        gti = ai_gti[1]
         p,q,rs = get_unflatten_index(ai, anchorbox_arr_shape)
+        a_box = anchor_flat(ai)
+        gt_box = gt_box_arr[gti]
         y_class_true[p,q,rs*2] = 1
         y_class_true[p,q,rs*2+1] = 0
+        dx = (gt_box[0]-a_box[0])/a_box[2]
+        dy = (gt_box[1]-a_box[1])/a_box[3]
+        dw = log(gt_box[2]/a_box[2])
+        dh = log(gt_box[3]/gt_box[3])
+        y_regr_true[p,q,rs*4] = dx
+        y_regr_true[p,q,rs*4+1] = dy
+        y_regr_true[p,q,rs*4+2] = dw
+        y_regr_true[p,q,rs*4+3] = dh
     for ai in neg_indices:
         p,q,rs = get_unflatten_index(ai, anchorbox_arr_shape)
         y_class_true[p,q,rs*2] = 0
         y_class_true[p,q,rs*2+1] = 1
-    print(y_class_true)
-        
+
+    return y_class_true, y_regr_true
+            
 def preprocess_npimg(x):
         return x * 1./255.
 
-img = PIL.Image.open("D:\\Random pics\\joker.png")
-img.show()
+img = Image.open("D:\\Random pics\\joker.png")
+img_arr = np.array(img)
+labels = np.array([[1,150,84,100,100]])
+np.set_printoptions(threshold=sys.maxsize)
+
+
+p,q,sr = get_unflatten_index(pos[0,0], arr_shape)
+
