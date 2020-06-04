@@ -98,9 +98,6 @@ class ImageVocSequence(Sequence):
                         anchor_boxes[i,j,k] = a_box
         return anchor_boxes
 
-    def non_max_suppression(boxes, ):
-        return None
-
     def preprocess_anchor_boxes(anchor_boxes):
         #takes in an output from generate_anchor_boxes
 
@@ -233,7 +230,7 @@ class ImageVocSequence(Sequence):
         return pick
 
     def iou_sampling(pruned_anchor_box_indices, iou_scores, iou_upper=0.7, iou_lower=0.3):
-        #pruned_anchor_box_indices is the index of all the chosen anchor boxes after NMS. May want to remove the NMS step to make sure there's more entries
+        #pruned_anchor_box_indices is the index of all anchor boxes
         #iou_scores is the unpruned iou_scores
         #iou_upper, iou_lower are floats between 1 and 0 representing the iou threshold for positive cases and negative cases
 
@@ -245,7 +242,6 @@ class ImageVocSequence(Sequence):
         pos_res = []
         pos_case_indices = []
         candidate_indices = pruned_anchor_box_indices
-        pruned_iou = np.array([iou_scores[:,i] if i in pruned_anchor_box_indices else np.zeros(2) for i in range(iou_scores.shape[1])]).transpose()
         indices_to_del = []
         for i,_ in enumerate(iou_scores):
             idx = np.argmax(iou_scores[i])
@@ -259,7 +255,10 @@ class ImageVocSequence(Sequence):
                     pos_case_indices.append(j)
             candidate_indices = np.delete(candidate_indices, indices_to_del)
             indices_to_del = []
+
         pos_res = np.array(pos_res)
+        if pos_res.shape[0] > 128:
+            pos_res = np.random.choice(pos_res, size=128, replace = False)
         pos_count = pos_res.shape[0]
 
         #This part gets the negatives
@@ -273,12 +272,9 @@ class ImageVocSequence(Sequence):
         return pos_res, neg_res
 
     def prune_a_box(self, anchor_boxes_flat, iou, overlapThresh = 0.5):
-        nms_pruned_indices = []
-        for score in iou:
-            nms_pruned_indices.append(non_max_suppression_fast(self.xywh_to_xyxy(anchor_boxes_flat), score, overlapThresh))
-        nms_pruned_indices = np.array(nms_pruned_indices)
-        nms_pruned_indices_unique = np.unique(nms_pruned_indices)
-        pos_box_indicex, neg_box_indices = self.iou_sampling(nms_pruned_indices_unique, iou, iou_upper=0.7, iou_lower=0.3)
+        anchor_box_indices = np.array(anchor_boxes_flat.shape[0])
+        pos_box_indices, neg_box_indices = self.iou_sampling(anchor_box_indices, iou, iou_upper=0.7, iou_lower=0.3)
+
 
 
     #def convert_labels_cxywh_to_arrays(self, labels, iou_threshold=0.5, exceed_thresh_positive=True):
