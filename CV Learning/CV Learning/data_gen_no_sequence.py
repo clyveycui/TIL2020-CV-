@@ -1,3 +1,4 @@
+import tensorflow as tf
 import numpy as np
 from PIL import Image
 from math import log
@@ -278,7 +279,7 @@ def create_ytrue_train(img, labels, iou_upper = 0.7, iou_lower = 0.3):
         ai = ai_gti[0]
         gti = ai_gti[1]
         p,q,rs = get_unflatten_index(ai, anchorbox_arr_shape)
-        a_box = anchor_flat(ai)
+        a_box = anchor_flat[ai]
         gt_box = gt_box_arr[gti]
         y_class_true[p,q,rs*2] = 1
         y_class_true[p,q,rs*2+1] = 0
@@ -300,11 +301,25 @@ def create_ytrue_train(img, labels, iou_upper = 0.7, iou_lower = 0.3):
 def preprocess_npimg(x):
         return x * 1./255.
 
-img = Image.open("D:\\Random pics\\joker.png")
-img_arr = np.array(img)
-labels = np.array([[1,150,84,100,100]])
-np.set_printoptions(threshold=sys.maxsize)
+#img = Image.open("D:\\Random pics\\joker.png")
+#img_arr = np.array(img)
+#labels = np.array([[1,150,84,100,100]])
+#np.set_printoptions(threshold=sys.maxsize)
 
-
-p,q,sr = get_unflatten_index(pos[0,0], arr_shape)
-
+#y_c_true, y_r_true = create_ytrue_train(img, labels)
+#print(y_c_true.shape)
+#print(y_r_true.shape)
+#ytrue = np.concatenate([y_c_true,y_r_true], -1)
+#ytrue_class = ytrue[:,:,:18]
+#ytrue_regr = np.array(ytrue[:,:,18:])
+#ypred_regr = np.array(ytrue[:,:,18:])
+#x = tf.where(ytrue[:,:,:18] != -1, ytrue[:,:,:18], -1)
+#for i in range(ytrue_regr.shape[0]):
+#    for j in range(ytrue_regr.shape[1]):
+#        for n in range(ytrue_regr.shape[2]//4):
+#            if ytrue_class[i,j,2*n] != 1:
+#                ypred_regr[i,j,4*n] = 0
+#                ypred_regr[i,j,4*n+1] = 0
+#                ypred_regr[i,j,4*n+2] = 0
+#                ypred_regr[i,j,4*n+3] = 0
+#ypred = tf.where(ytrue[:,:,:,:18] !=-1, ypred, -1)
