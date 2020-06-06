@@ -136,16 +136,13 @@ def xywh_to_xyxy(box):
     return (x_min,y_min,x_max,y_max)
 
 # Malisiewicz et al.
-def non_max_suppression_fast(boxes, iou, overlapThresh):
-    #boxes is an array of shape n*4 where n is the number of boxes and each box is in the form of (x1,y1,x2,y2)
-    #iou is the score of all the boxes against a gt box
-
+def non_max_suppression_fast(boxes, overlapThresh):
+    #boxes is an array of shape n*4 where n is the number of boxes and each box is in the form of (x1,y1,x2,y2) and order must be sorted based on its score
+    
     #returns a 1D array containing all the indices of the boxes chosen
-
     # if there are no boxes, return an empty list
     if len(boxes) == 0:
         return []
-
     # if the bounding boxes integers, convert them to floats --
     # this is important since we'll be doing a bunch of divisions
     if boxes.dtype.kind == "i":
@@ -163,7 +160,7 @@ def non_max_suppression_fast(boxes, iou, overlapThresh):
     # compute the area of the bounding boxes and sort the bounding
     # boxes by the bottom-right y-coordinate of the bounding box
     area = (x2 - x1 + 1) * (y2 - y1 + 1)
-    idxs = np.argsort(y2)
+    idxs = np.array([i for i in range(len(y2))])
 
     # keep looping while some indexes still remain in the indexes
     # list
@@ -189,11 +186,7 @@ def non_max_suppression_fast(boxes, iou, overlapThresh):
         # compute the ratio of overlap
         overlap = (w * h) / area[idxs[:last]]
         overlap_box_indices = idxs[np.where(overlap > overlapThresh)[0]]
-        if len(overlap_box_indices) > 0:
-            i = overlap_box_indices[np.argmax(iou[overlap_box_indices])]
         pick.append(i)
-        #iou_scores
-        
 
         # delete all indexes from the index list that have
         idxs = np.delete(idxs, np.concatenate(([last],
