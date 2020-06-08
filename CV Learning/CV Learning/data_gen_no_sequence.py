@@ -126,20 +126,30 @@ def get_unflatten_index(flat_index, arr_shape):
     sr = flat_index%arr_shape[2]
     return p, q ,sr
 
-def xywh_to_xyxy(box):
+def xywhs_to_xyxys(box):
     #only used for NMS pruning
-    x, y, w, h = box
+    x, y, w, h, score = box
     x_min = x-w/2.0
     x_max = x+w/2.0
     y_min = y-h/2.0
     y_max = y+h/2.0
-    return (x_min,y_min,x_max,y_max)
+    return np.array([x_min,y_min,x_max,y_max,score])
+
+def xyxys_to_xywhs(box):
+    #only used for NMS pruning
+    x1, y1, x2, y2, score = box
+    x = (x1+x2)/2.0
+    y = (y1+y2)/2.0
+    w = np.absolute(x1-x2)
+    h = np.absolute(y1-y2)
+    return np.array([x,y,w,h,score])
 
 # Malisiewicz et al.
 def non_max_suppression_fast(boxes, overlapThresh):
-    #boxes is an array of shape n*4 where n is the number of boxes and each box is in the form of (x1,y1,x2,y2) and order must be sorted based on its score
-    
-    #returns a 1D array containing all the indices of the boxes chosen
+    #boxes is an array of shape n*5 where n is the number of boxes and each box is in the form of (x,y,w,h,s)
+
+    #returns a p*5 array containing all the boxes of the boxes picked in the form of (x,y,w,h,s)
+
     # if there are no boxes, return an empty list
     if len(boxes) == 0:
         return []
@@ -148,14 +158,27 @@ def non_max_suppression_fast(boxes, overlapThresh):
     if boxes.dtype.kind == "i":
         boxes = boxes.astype("float")
 
+    #converts from xywhs to xyxys
+    for i in range(boxes.shape[0]):
+        boxes[i] = xywhs_to_xyxys(boxes[i])
+
+    #sorts the array based on score
+    scores = boxes[:,4]
+    sorted_index = np.argsort(scores)
+    boxes_sorted = []
+    for i in sorted_index:
+        boxes_sorted.append(boxes[i])
+    boxes_sorted = np.array(boxes_sorted)
+
+
     # initialize the list of picked indexes	
     pick = []
 
     # grab the coordinates of the bounding boxes
-    x1 = boxes[:,0]
-    y1 = boxes[:,1]
-    x2 = boxes[:,2]
-    y2 = boxes[:,3]
+    x1 = boxes_sorted[:,0]
+    y1 = boxes_sorted[:,1]
+    x2 = boxes_sorted[:,2]
+    y2 = boxes_sorted[:,3]
 
     # compute the area of the bounding boxes and sort the bounding
     # boxes by the bottom-right y-coordinate of the bounding box
@@ -194,7 +217,14 @@ def non_max_suppression_fast(boxes, overlapThresh):
 
 	# return only the bounding boxes that were picked using the
 	# integer data type
-    return pick
+    picked_boxes = []
+    for p in pick:
+        picked_boxes.append(boxes_sorted[p])
+    #converts back to xywhs form
+    for i in range(picked_boxes.shape[0]):
+        picked_boxes[i] = xyxys_to_xywhs(picked_boxes[i])
+    return np.array(picked_boxes)
+
 
 def iou_sampling(pruned_anchor_box_indices, iou_scores, iou_upper=0.7, iou_lower=0.3):
     #pruned_anchor_box_indices is the index of all anchor boxes
@@ -265,29 +295,26 @@ def create_ytrue_train(img, labels, iou_upper = 0.7, iou_lower = 0.3):
             else:
                 iou_score[i,j] = iou(anchor, gt_box,img_arr.shape[1],img_arr.shape[0])
     pos_indices, neg_indices = prune_a_box(anchor_flat, iou_score)
-    y_class_true = np.empty((anchorbox_arr_shape[0],anchorbox_arr_shape[1],anchorbox_arr_shape[2]*2))
-    y_class_true.fill(-1)
-    y_regr_true = np.zeros((anchorbox_arr_shape[0],anchorbox_arr_shape[1],anchorbox_arr_shape[2]*4))
+    y_class_true = np.zeros((anchor_flat.shape[0], 2))
+    y_regr_true = np.zeros((anchor_flat.shape[0], 4))
     for ai_gti in pos_indices:
         ai = ai_gti[0]
         gti = ai_gti[1]
-        p,q,rs = get_unflatten_index(ai, anchorbox_arr_shape)
         a_box = anchor_flat[ai]
         gt_box = gt_box_arr[gti]
-        y_class_true[p,q,rs*2] = 1
-        y_class_true[p,q,rs*2+1] = 0
+        y_class_true[ai, 0] = 1
+        y_class_true[ai, 1] = 0
         dx = (gt_box[0]-a_box[0])/a_box[2]
         dy = (gt_box[1]-a_box[1])/a_box[3]
         dw = log(gt_box[2]/a_box[2])
         dh = log(gt_box[3]/gt_box[3])
-        y_regr_true[p,q,rs*4] = dx
-        y_regr_true[p,q,rs*4+1] = dy
-        y_regr_true[p,q,rs*4+2] = dw
-        y_regr_true[p,q,rs*4+3] = dh
+        y_regr_true[ai,0] = dx
+        y_regr_true[ai,1] = dy
+        y_regr_true[ai,2] = dw
+        y_regr_true[ai,3] = dh
     for ai in neg_indices:
-        p,q,rs = get_unflatten_index(ai, anchorbox_arr_shape)
-        y_class_true[p,q,rs*2] = 0
-        y_class_true[p,q,rs*2+1] = 1
+        y_class_true[ai,0] = 0
+        y_class_true[ai,1] = 1
 
     return y_class_true, y_regr_true
             
@@ -295,13 +322,12 @@ def preprocess_npimg(x):
         return x * 1./255.
 
 #img = Image.open("D:\\Random pics\\joker.png")
+#img = img.resize((960,640))
 #img_arr = np.array(img)
 #labels = np.array([[1,150,84,100,100]])
 #np.set_printoptions(threshold=sys.maxsize)
-
+#anchor_points = get_anchor_points(1000,600,16)
 #y_c_true, y_r_true = create_ytrue_train(img, labels)
-#print(y_c_true.shape)
-#print(y_r_true.shape)
 #ytrue = np.concatenate([y_c_true,y_r_true], -1)
 #ytrue_class = ytrue[:,:,:18]
 #ytrue_regr = np.array(ytrue[:,:,18:])
@@ -316,3 +342,6 @@ def preprocess_npimg(x):
 #                ypred_regr[i,j,4*n+2] = 0
 #                ypred_regr[i,j,4*n+3] = 0
 #ypred = tf.where(ytrue[:,:,:,:18] !=-1, ypred, -1)
+
+#ypred 
+ 
