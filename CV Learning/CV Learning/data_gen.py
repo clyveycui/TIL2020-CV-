@@ -16,6 +16,7 @@ from tensorflow.python.keras.utils.data_utils import Sequence
 
 #THIS MODULE ONLY DEFINES THE SEQUENCE OBJECT FOR RPN 
 #NEED TO MODIFY IT FOR FAST RCNN TRAINING
+#Try redoing using different sizes for the rpn
 
 
 def iou(anchor_box, ground_truth_box, img_w, img_h):
@@ -358,7 +359,7 @@ class TILSequence(Sequence):
         annotations_list = annotations_dict['annotations']
         for annotation in annotations_list:
             img_id = str(annotation['image_id'])
-            c = annotation['category_id'] - 1 # TODO: make sure that category ids start from 1, not 0. Need to set back_ground as another category
+            c = annotation['category_id'] # TODO: make sure that category ids start from 1, not 0. Need to set back_ground as another category
             boxleft,boxtop,boxwidth,boxheight = annotation['bbox']
             if img_id in imgs_dict:
                 img_fp = os.path.join(img_folder, imgs_dict[img_id])

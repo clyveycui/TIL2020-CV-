@@ -75,7 +75,7 @@ def generate_anchor_boxes(w, h, stride, scale=[128,256,512], ratio=[0.5, 1, 2], 
     for i in range(a_shape[0]):
         for j in range(a_shape[1]):
             for k, sl in enumerate(side_lengths) :
-                a_box = np.array([anchor_points[i,j][0], anchor_points[i,j][1], sl[0], sl[1]])
+                a_box = np.array([anchor_points[i,j][0]*1.0/w, anchor_points[i,j][1]*1.0/h, sl[0]/w, sl[1]/h])
                 if(no_exceed_bound):
                     if(a_box[0] - a_box[2]/2<0 or a_box[0] + a_box[2]/2>w):
                         continue
@@ -318,17 +318,17 @@ def create_ytrue_train(img, labels, iou_upper = 0.7, iou_lower = 0.3):
 
     return y_class_true, y_regr_true
             
-def preprocess_npimg(x):
-        return x * 1./255.
 
-#img = Image.open("D:\\Random pics\\joker.png")
-#img = img.resize((960,640))
+img = Image.open("D:\\Random pics\\joker.png")
+img = img.resize((960,640))
 #img_arr = np.array(img)
-#labels = np.array([[1,150,84,100,100]])
+labels = np.array([[1,150,84,100,100]])
 #np.set_printoptions(threshold=sys.maxsize)
-#anchor_points = get_anchor_points(1000,600,16)
-#y_c_true, y_r_true = create_ytrue_train(img, labels)
-#ytrue = np.concatenate([y_c_true,y_r_true], -1)
+anchors= generate_anchor_boxes(960,640,16)
+
+y_c_true, y_r_true = create_ytrue_train(img, labels)
+ytrue = np.concatenate([y_c_true,y_r_true], -1)
+print(ytrue)
 #ytrue_class = ytrue[:,:,:18]
 #ytrue_regr = np.array(ytrue[:,:,18:])
 #ypred_regr = np.array(ytrue[:,:,18:])
