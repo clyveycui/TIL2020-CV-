@@ -17,7 +17,7 @@ from tensorflow.keras.layers import Layer
 
 
 import img_aug
-import data_gen_no_sequence as data_gen
+import data_gen
 
 
 ##Source : https://gist.github.com/Jsevillamol/0daac5a6001843942f91f2a3daea27a7
@@ -233,19 +233,6 @@ import data_gen_no_sequence as data_gen
 
 #        return pooled_features
 
-
-img = np.zeros((640, 960, 3)) #Placeholder for img file h*w*c
-img_w = 960
-img_h = 640
-scale= [128, 256, 512]
-ratio= [0.5, 1, 2]
-
-sr = len(scale) * len(ratio)
-anchor_boxes = data_gen.generate_anchor_boxes(img_w, img_h, stride=16, scale=scale, ratio = ratio, no_exceed_bound = True)
-
-#Need to create ytrain based on how img is processed
-
-#Need to redefine loss functino to fit shape [bs, 21600, 6]
 def custom_loss(ytrue, ypred):
     #y_labels are in the shape [bs, i*j*9, 6]
     class_w = 1.0/256
@@ -299,11 +286,32 @@ def get_rp(ypred, anchor_boxes, scale, ratio, score_thresh = 0.7):
             proposed_region.append([x,y,w,h,score])
     return proposed_region
 
-input_shape = img.shape
+img_folder = r'D:\til2020\train\train'
+val_img_folder = r'D:\til2020\val\val'
+save_model_folder = r'D:\til2020'
+json_annotation = r'D:\til2020\train.json'
+val_annotation = r'D:\til2020\val.json'
+bs = 16
+n_epochs_warmup = 2
+n_epochs_after = 2
+train_sequence = data_gen.TILSequence(img_folder,json_annotation,bs,img_aug.aug_default,testmode = False)
+val_sequence = data_gen.TILSequence(val_img_folder, val_annotation, bs, img_aug.aug_identity,testmode = False)
+input_shape = (640,960,3)
+save_model_path = os.path.join( save_model_folder, 'rpn_model.h5' )
+
+model_checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
+                                                                filepath=save_model_path,
+                                                                save_weights_only=False,
+                                                                monitor='val_loss',
+                                                                mode='auto',
+                                                                save_best_only=True)
+earlystopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=30)
+reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, min_lr=1e-8)
+
 #Transfers VGG16 layer until last convolutional layer
 model = tf.keras.applications.vgg16.VGG16(input_shape = (640,960,3),weights="imagenet", include_top=False)
 model.layers.pop()
-model_2 = tf.keras.models.Sequential()
+model_2 = tf.keras.models.Sequential(name="VGG16")
 for layer in model.layers[:-1]:
     model_2.add(layer)
 for layer in model_2.layers:
@@ -324,8 +332,39 @@ rpn.compile(optimizer=tf.keras.optimizers.Adam(0.001),
                metrics=['accuracy'])
 model_plot = tf.keras.utils.plot_model(rpn, to_file ="D:\\Programming\\Python\\DSTA CV\\model3.png",show_shapes=True)
 
-model_img_f = "D:\\Programming\\Python\\DSTA CV\\model.png"
-keras.utils.plot_model(model, to_file=model_img_f, show_shapes=True)
+#model_img_f = "D:\\Programming\\Python\\DSTA CV\\model.png"
+#keras.utils.plot_model(model, to_file=model_img_f, show_shapes=True)
+
+#TRAINING
+
+rpn.fit(x=train_sequence, 
+        epochs=n_epochs_warmup, 
+        validation_data=val_sequence, 
+        callbacks=[model_checkpoint_callback, earlystopping, reduce_lr])
+
+
+
+load_model_path = os.path.join( save_model_folder, 'rpn_model.h5' )
+del rpn
+rpn = tf.keras.models.load_model(load_model_path, custom_objects={'custom_loss':custom_loss})
+#for layer in rpn.get_layer('VGG16').layers:
+#    layer.trainable = True
+#model_checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
+#                                                                filepath=save_model_path,
+#                                                                save_weights_only=False,
+#                                                                monitor='val_loss',
+#                                                                mode='auto',
+#                                                                save_best_only=True)
+#earlystopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=30)
+#reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, min_lr=1e-8)
+#rpn.fit(x=train_sequence, 
+#          epochs=n_epochs_after, 
+#          validation_data=val_sequence, 
+#          callbacks=[model_checkpoint_callback, earlystopping, reduce_lr])
+
+rpn.save(os.path.join( save_model_folder, 'rpn_model_final.h5' ))
+
+
 
 #APPLY get_rp then nms on the output of rpn
 #Feed that into a roi pooling layer
