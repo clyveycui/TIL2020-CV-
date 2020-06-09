@@ -1,3 +1,6 @@
+import numpy as np
+import PIL
+from PIL import ImageEnhance, ImageFont, ImageDraw
 
 def compute_reasonable_boundary(labels):
   bounds = [ (x-w/2, x+w/2, y-h/2, y+h/2) for _,x,y,w,h in labels]
@@ -82,7 +85,7 @@ def aug_sharpness(img, labels, sharpness_factors=[0.2,2.0]):
 
 # Performs no augmentations and returns the original image and bbox. Used for the validation images.
 def aug_identity(pil_img, label_arr):
-  return np.array(pil_img), label_arr
+  return pil_img, label_arr
 
 # This is the default augmentation scheme that we will use for each training image.
 def aug_default(img, labels, p={'flip':0.5, 'crop':0.2, 'translate':0.2, 'color':0.2, 'contrast':0.2, 'brightness':0.2, 'sharpness':0.2}):
@@ -100,4 +103,4 @@ def aug_default(img, labels, p={'flip':0.5, 'crop':0.2, 'translate':0.2, 'color'
     img, labels = aug_crop(img, labels)
   if p['translate'] > np.random.uniform():
     img, labels = aug_translate(img, labels)
-  return np.array(img), labels
+  return img, labels
