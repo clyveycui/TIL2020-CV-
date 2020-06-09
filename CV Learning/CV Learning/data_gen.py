@@ -334,12 +334,11 @@ def create_ytrue_train(img, labels, iou_upper = 0.7, iou_lower = 0.3):
             
 
 class TILSequence(Sequence):
-    def __init__(self, img_folder, json_annotation_file, batch_size, augment_fn, label_encoder, testmode=False):
+    def __init__(self, img_folder, json_annotation_file, batch_size, augment_fn, testmode=False):
         self._prepare_data(img_folder, json_annotation_file)
         self.batch_size = batch_size
         self.augment_fn = augment_fn
         self.input_wh = (960,640,3)
-        self.label_encoder = label_encoder
         self.testmode = testmode
     
     def _prepare_data(self, img_folder, json_annotation_file):
@@ -420,19 +419,19 @@ class TILSequence(Sequence):
         batch_x = self.x[idx * self.batch_size:(idx + 1) * self.batch_size]
         batch_y = self.y[idx * self.batch_size:(idx + 1) * self.batch_size]
 
-        x_acc, y_acc = [], {}
-        with Pool(self.batch_size) as p:
+        x_acc, y_acc = [], []
+        #with Pool(self.batch_size) as p:
         # Read in the PIL objects from filepaths
-            batch_x = p.map(load_img, batch_x)
-        for i, image in enumerate(batch_x):
-            batch_x[i] = image.resize((960,640))
+        for i,img_path in enumerate(batch_x):
+            batch_x[i] = load_img(img_path).resize((960,640))
+        #for i, image in enumerate(batch_x):
+        #    batch_x[i] = image.resize((960,640))
     
         for x,y in zip( batch_x, batch_y ):
             x_aug, y_aug = self.augment_fn( x, y )
             if x_aug.size != (960,640):
-                x_aug = x_aug.resize( 960,640 )
+                x_aug = x_aug.resize( (960,640) )
             x_acc.append( np.array(x_aug) )
-            
             ytrue = create_ytrue_train(x_aug, y_aug, iou_upper = 0.7, iou_lower = 0.3)
             y_acc.append( ytrue )
 
