@@ -4,7 +4,7 @@
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>c172cebd-1c6a-4073-bce6-6763f67f3481</ProjectGuid>
     <ProjectHome>.</ProjectHome>
-    <StartupFile>data_cleaning.py</StartupFile>
+    <StartupFile>module2.py</StartupFile>
     <SearchPath>
     </SearchPath>
     <WorkingDirectory>.</WorkingDirectory>
@@ -24,7 +24,10 @@
     <Compile Include="data_gen.py">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="CV_Learning.py" />
+    <Compile Include="module2.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="rpn_training.py" />
     <Compile Include="img_aug.py">
       <SubType>Code</SubType>
     </Compile>
@@ -35,6 +38,9 @@
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="data_cleaning.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="rcnn_traing.py">
       <SubType>Code</SubType>
     </Compile>
   </ItemGroup>

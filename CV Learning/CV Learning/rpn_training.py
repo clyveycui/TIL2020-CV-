@@ -1,6 +1,7 @@
 import os
 import PIL
 import pickle
+import json
 import numpy as np
 from tqdm import tqdm
 from math import log, exp
@@ -31,15 +32,13 @@ def custom_loss(ytrue, ypred):
     ypred_regr = ypred[:,:,2:]
     ytrue_class = ytrue[:,:,:2]
     ytrue_regr = ytrue[:,:,2:]
-    ypred_class = tf.where(tf.stack((tf.reduce_all(ytrue_class == 0, axis = 2), tf.reduce_all(ytrue_class == 0, axis = 2)), axis = -1), 0., ypred_class)
-    if (ytrue_regr.shape[0]!= None):
-        for b in range(ytrue_regr.shape[0]):
-            for i in range(ytrue_regr.shape[1]):
-                if ytrue_class[b,i,0] != 1:
-                    ypred_regr[b,i,0] = 0
-                    ypred_regr[b,i,1] = 0
-                    ypred_regr[b,i,2] = 0
-                    ypred_regr[b,i,3] = 0
+    cl = tf.reduce_all(ytrue_class == 0, axis = 2)
+    cl2 = tf.stack((x,x), axis=-1)
+    ypred_class = tf.where(x2, 0., ypred_class)
+    r = tf.where(ytrue_class[:,:,0] == 1, 1, 0)
+    r2 = tf.stack((r,r), axis = -1)
+    ypred_regr_mask = tf.concat((r2,r2), axis = -1)
+    ypred_regr = tf.math.multiply(ypred_regr_mask, ypred_regr)
 
     class_loss = keras.losses.BinaryCrossentropy()(ytrue_class, ypred_class)
     regr_loss = keras.losses.Huber()(ytrue_regr, ypred_regr)

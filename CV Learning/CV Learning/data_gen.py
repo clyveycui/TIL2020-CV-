@@ -335,17 +335,18 @@ def create_ytrue_train(img, labels, iou_upper = 0.7, iou_lower = 0.3):
             
 
 class TILSequence(Sequence):
-    def __init__(self, img_folder, json_annotation_file, batch_size, augment_fn, testmode=False):
-        self._prepare_data(img_folder, json_annotation_file)
+    def __init__(self, pickle_file, json_annotation_file, batch_size, augment_fn, testmode=False):
+        self._prepare_data(pickle_file, json_annotation_file)
         self.batch_size = batch_size
         self.augment_fn = augment_fn
         self.input_wh = (960,640,3)
         self.testmode = testmode
     
     def _prepare_data(self, img_folder, json_annotation_file):
-        #imgs_dict is a dictionary mapping image id to image file name
-        imgs_dict = {im.split('.')[0]:im for im in os.listdir(img_folder) if im.endswith('.jpg')}
-        data_dict = {}
+        imgs_dict = pickle.load(pickle_file)
+        annotations_dict = {}
+        for imgid in imgs_dict:
+            annotations_dict[imgid] = []
         with open(json_annotation_file, 'r') as f:
             annotations_dict = json.load(f)
         #annotations_list is a list containing all annotations in the form of dictionaries     {
@@ -358,23 +359,23 @@ class TILSequence(Sequence):
         #}
         annotations_list = annotations_dict['annotations']
         for annotation in annotations_list:
-            img_id = str(annotation['image_id'])
-            c = annotation['category_id'] # TODO: make sure that category ids start from 1, not 0. Need to set back_ground as another category
-            boxleft,boxtop,boxwidth,boxheight = annotation['bbox']
-            if img_id in imgs_dict:
-                img_fp = os.path.join(img_folder, imgs_dict[img_id])
-                imwidth,imheight = PIL.Image.open(img_fp).size
-                if img_id not in data_dict:
-                    data_dict[img_id] = []
+            try:
+                img_id = str(annotation['image_id'])
+                imwidth = imgs_dict[img_id][1]
+                imheight = imgs_dict[img_id][2]
+                c = annotation['category_id'] # TODO: make sure that category ids start from 1, not 0. Need to set back_ground as another category
+                boxleft,boxtop,boxwidth,boxheight = annotation['bbox']
                 box_cenx = boxleft + boxwidth/2.
                 box_ceny = boxtop + boxheight/2.
                 x,y,w,h = box_cenx/imwidth, box_ceny/imheight, boxwidth/imwidth, boxheight/imheight
                 data_dict[img_id].append( [c,x,y,w,h] )
+            except KeyError:
+                continue
         #anchor_boxes = generate_anchor_boxes(960,640, 16, scale = [128,256,512], ratio = [0.5,1.0,2.0], no_exceed_bound = True)
 
         self.x, self.y, self.ids = [], [], []
         for img_id, labels in data_dict.items():
-            self.x.append( os.path.join(img_folder, imgs_dict[img_id]) )
+            self.x.append( imgs_dict[img_id][0])
             self.y.append( np.array(labels) )
             self.ids.append( img_id )
 
@@ -421,15 +422,9 @@ class TILSequence(Sequence):
         batch_y = self.y[idx * self.batch_size:(idx + 1) * self.batch_size]
 
         x_acc, y_acc = [], []
-        #with Pool(self.batch_size) as p:
-        # Read in the PIL objects from filepaths
-        for i,img_path in enumerate(batch_x):
-            batch_x[i] = load_img(img_path).resize((960,640))
-        #for i, image in enumerate(batch_x):
-        #    batch_x[i] = image.resize((960,640))
     
         for x,y in zip( batch_x, batch_y ):
-            x_aug, y_aug = self.augment_fn( x, y )
+            x_aug, y_aug = self.augment_fn( Image.fromarray(x, 'RGB'), y )
             if x_aug.size != (960,640):
                 x_aug = x_aug.resize( (960,640) )
             x_acc.append( np.array(x_aug) )

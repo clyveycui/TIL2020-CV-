@@ -17,7 +17,7 @@ images = []
 for i,path in enumerate(train_img_path):
     img = Image.open(path)
     print(path)
-    img_resized = img.resize((960,640))
+    img_resized = np.array(img.resize((960,640)))
     img_id = data["images"][i]['id']
     images.append([img_resized, img_id])
     img.close()

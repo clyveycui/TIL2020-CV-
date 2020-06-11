@@ -275,6 +275,12 @@ def iou_sampling(pruned_anchor_box_indices, iou_scores, iou_upper=0.7, iou_lower
 
 #ypred = tf.where(ytrue[:,:,:,:18] !=-1, ypred, -1)
 
-x = tf.constant([[[1,2,3,4],[5,6,7,8]], [[9,10,11,12],[13,14,15,16]]])
-f = tf.reshape(x, [-1,2])
-print(f)
+#x = tf.constant([[[1,2,3,4],[5,6,7,8]], [[9,10,11,12],[13,14,15,16]]])
+#f = tf.reshape(x, [-1,2])
+#print(f)
+#x = np.zeros((3,5,2))
+
+#y = tf.where(x[:,:,1] == 1, 1,0)
+#y2 = tf.stack((y,y), axis = -1)
+#y4 = tf.concat((y2,y2), axis = -1)
+#print(y4)
