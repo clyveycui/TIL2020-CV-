@@ -19,7 +19,7 @@ from tensorflow.python.keras.utils.data_utils import Sequence
 #Try redoing using different sizes for the rpn
 
 
-def iou(anchor_box, ground_truth_box, img_w, img_h):
+def iou(anchor_box, ground_truth_box):
     #anchor_box, ground_truth_box are size 4 arrays in the form [x_centre, y_centre, width, height]
     #img_w, img_h are the pixel dimensions of the image
 
@@ -27,12 +27,12 @@ def iou(anchor_box, ground_truth_box, img_w, img_h):
 
     xa_min = max(anchor_box[0]-0.5*anchor_box[2], 0)
     ya_min = max(anchor_box[1]-0.5*anchor_box[3], 0)
-    xa_max = min(anchor_box[0]+0.5*anchor_box[2], img_w)
-    ya_max = min(anchor_box[1]+0.5*anchor_box[3], img_h)
+    xa_max = min(anchor_box[0]+0.5*anchor_box[2], 1)
+    ya_max = min(anchor_box[1]+0.5*anchor_box[3], 1)
     xg_min = max(ground_truth_box[0]-0.5*ground_truth_box[2], 0)
     yg_min = max(ground_truth_box[1]-0.5*ground_truth_box[3], 0)
-    xg_max = min(ground_truth_box[0]+0.5*ground_truth_box[2], img_w)
-    yg_max = min(ground_truth_box[1]+0.5*ground_truth_box[3], img_h)
+    xg_max = min(ground_truth_box[0]+0.5*ground_truth_box[2], 1)
+    yg_max = min(ground_truth_box[1]+0.5*ground_truth_box[3], 1)
 
     i_xmin = max(xa_min,xg_min)
     i_ymin = max(ya_min,yg_min)
@@ -107,40 +107,22 @@ def preprocess_anchor_boxes(anchor_boxes):
 
     #returns a n*4 array containing x,y,w,h of anchor boxes. Order is anchor box at 0,0 0,1 0,2 ... 0,q, 1,0, 1,1 ... p,q
     arr_shape = anchor_boxes.shape
-    arr_flat = anchor_boxes.flatten()
-    temp_arr = []
-    arr_res = []
-    for v in range(len(arr_flat)//4):
-        temp_arr = [arr_flat[4*(v)], arr_flat[4*(v)+1], arr_flat[4*(v)+2], arr_flat[4*(v)+3]]
-        arr_res.append(temp_arr)
-    arr_res_np = np.array(arr_res)
+    arr_res =[]
+    for q in range(arr_shape[1]):
+        for p in range(arr_shape[0]):
+            for sr in range(arr_shape[2]):
+                arr_res.append(anchor_boxes[p,q,sr])
+    return np.array(arr_res), arr_shape
+    #arr_flat = anchor_boxes.flatten()
+    #temp_arr = []
+    #arr_res = []
+    #for v in range(len(arr_flat)//4):
+    #    temp_arr = [arr_flat[4*(v)], arr_flat[4*(v)+1], arr_flat[4*(v)+2], arr_flat[4*(v)+3]]
+    #    arr_res.append(temp_arr)
+    #arr_res_np = np.array(arr_res)
 
-    return arr_res_np, arr_shape
+    #return arr_res_np, arr_shape
         
-    
-def unflatten_anchor_boxes_arr(flat_arr, arr_shape):
-    #Inverse of preprocess_anchor_boxes
-    #array shape should be [p, q, sr, 4]
-
-    #returns a p*q*(s*r)*4 array
-
-    arr_res = np.zeros(arr_shape)
-    arr_len = len(flat_arr)
-
-    for i,arr in enumerate(flat_arr):
-        sr = i%arr_shape[2]
-        q = (i//arr_shape[2])%arr_shape[1]
-        p = i//(arr_shape[2]*arr_shape[1])
-        arr_res[p,q,sr] = arr
-
-    return arr_res
-
-def get_unflatten_index(flat_index, arr_shape):
-    p = flat_index//(arr_shape[2]*arr_shape[1])
-    q = (flat_index//arr_shape[2])%arr_shape[1]
-    sr = flat_index%arr_shape[2]
-    return p, q ,sr
-
 def xywhs_to_xyxys(box):
     #only used for NMS pruning
     x, y, w, h, score = box
@@ -236,7 +218,7 @@ def non_max_suppression_fast(boxes, overlapThresh):
     for p in pick:
         picked_boxes.append(boxes_sorted[p])
     #converts back to xywhs form
-    for i in range(picked_boxes.shape[0]):
+    for i in range(np.array(picked_boxes).shape[0]):
         picked_boxes[i] = xyxys_to_xywhs(picked_boxes[i])
     return np.array(picked_boxes)
 
@@ -293,7 +275,7 @@ def prune_a_box(anchor_boxes_flat, iou_scores):
 
 def create_ytrue_train(img, labels, iou_upper = 0.7, iou_lower = 0.3):
     img_arr = np.array(img)
-    anchor_boxes = generate_anchor_boxes(img_arr.shape[1], img_arr.shape[0], stride=16, scale=[64,128,256], ratio=[0.5,1,2], no_exceed_bound = True)
+    anchor_boxes = generate_anchor_boxes(img_arr.shape[1], img_arr.shape[0], stride=16, scale=[56,128,256], ratio=[0.5,1,2], no_exceed_bound = True)
     gt_box_arr = []
     for label in labels:
         gtclass, gtx, gty, gtw, gth = label
@@ -309,7 +291,7 @@ def create_ytrue_train(img, labels, iou_upper = 0.7, iou_lower = 0.3):
             if (anchor[2] == 0):
                 iou_score[i,j] = -1
             else:
-                iou_score[i,j] = iou(anchor, gt_box,img_arr.shape[1],img_arr.shape[0])
+                iou_score[i,j] = iou(anchor, gt_box)
     pos_indices, neg_indices = prune_a_box(anchor_flat, iou_score)
     y_class_true = np.zeros((anchor_flat.shape[0], 2))
     y_regr_true = np.zeros((anchor_flat.shape[0], 4))
