@@ -257,7 +257,8 @@ def iou_sampling(pruned_anchor_box_indices, iou_scores, iou_upper=0.7, iou_lower
     indices_to_del = []
     for i,_ in enumerate(iou_scores):
         idx = np.argmax(iou_scores[i])
-        pos_res.append([idx,i])
+        if iou_scores[i,idx] != 0:
+          pos_res.append([idx,i])
         pos_case_indices.append(idx)
         candidate_indices = candidate_indices[candidate_indices != idx]
         for f,j in enumerate(candidate_indices):
@@ -292,7 +293,7 @@ def prune_a_box(anchor_boxes_flat, iou_scores):
 
 def create_ytrue_train(img, labels, iou_upper = 0.7, iou_lower = 0.3):
     img_arr = np.array(img)
-    anchor_boxes = generate_anchor_boxes(img_arr.shape[1], img_arr.shape[0], stride=16, scale=[32,64,128], ratio=[0.5,1,2], no_exceed_bound = True)
+    anchor_boxes = generate_anchor_boxes(img_arr.shape[1], img_arr.shape[0], stride=16, scale=[64,128,256], ratio=[0.5,1,2], no_exceed_bound = True)
     gt_box_arr = []
     for label in labels:
         gtclass, gtx, gty, gtw, gth = label
@@ -322,7 +323,8 @@ def create_ytrue_train(img, labels, iou_upper = 0.7, iou_lower = 0.3):
         dx = (gt_box[0]-a_box[0])/a_box[2]
         dy = (gt_box[1]-a_box[1])/a_box[3]
         dw = log(gt_box[2]/a_box[2])
-        dh = log(gt_box[3]/gt_box[3])
+        dh = log(gt_box[3]/a_box[3])
+
         y_regr_true[ai,0] = dx
         y_regr_true[ai,1] = dy
         y_regr_true[ai,2] = dw
@@ -332,7 +334,6 @@ def create_ytrue_train(img, labels, iou_upper = 0.7, iou_lower = 0.3):
         y_class_true[ai,1] = 1
 
     return np.concatenate([y_class_true, y_regr_true], -1)
-            
 
 class TILSequence(Sequence):
     def __init__(self, pickle_file, json_annotation_file, batch_size, augment_fn, testmode=False):
@@ -342,11 +343,12 @@ class TILSequence(Sequence):
         self.input_wh = (960,640,3)
         self.testmode = testmode
     
-    def _prepare_data(self, img_folder, json_annotation_file):
-        imgs_dict = pickle.load(pickle_file)
-        annotations_dict = {}
+    def _prepare_data(self, pickle_file, json_annotation_file):
+        with open(pickle_file, 'rb') as f:
+            imgs_dict = pickle.load(f)
+        data_dict = {}
         for imgid in imgs_dict:
-            annotations_dict[imgid] = []
+            data_dict[imgid] = []
         with open(json_annotation_file, 'r') as f:
             annotations_dict = json.load(f)
         #annotations_list is a list containing all annotations in the form of dictionaries     {
