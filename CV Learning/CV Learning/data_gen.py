@@ -122,105 +122,7 @@ def preprocess_anchor_boxes(anchor_boxes):
     #arr_res_np = np.array(arr_res)
 
     #return arr_res_np, arr_shape
-        
-def xywhs_to_xyxys(box):
-    #only used for NMS pruning
-    x, y, w, h, score = box
-    x_min = x-w/2.0
-    x_max = x+w/2.0
-    y_min = y-h/2.0
-    y_max = y+h/2.0
-    return np.array([x_min,y_min,x_max,y_max,score])
-
-def xyxys_to_xywhs(box):
-    #only used for NMS pruning
-    x1, y1, x2, y2, score = box
-    x = (x1+x2)/2.0
-    y = (y1+y2)/2.0
-    w = np.absolute(x1-x2)
-    h = np.absolute(y1-y2)
-    return np.array([x,y,w,h,score])
-
-# Malisiewicz et al.
-def non_max_suppression_fast(boxes, overlapThresh):
-    #boxes is an array of shape n*5 where n is the number of boxes and each box is in the form of (x,y,w,h,s)
-
-    #returns a p*5 array containing all the boxes of the boxes picked in the form of (x,y,w,h,s)
-
-    # if there are no boxes, return an empty list
-    if len(boxes) == 0:
-        return []
-    # if the bounding boxes integers, convert them to floats --
-    # this is important since we'll be doing a bunch of divisions
-    if boxes.dtype.kind == "i":
-        boxes = boxes.astype("float")
-
-    #converts from xywhs to xyxys
-    for i in range(boxes.shape[0]):
-        boxes[i] = xywhs_to_xyxys(boxes[i])
-
-    #sorts the array based on score
-    scores = boxes[:,4]
-    sorted_index = np.argsort(scores)
-    boxes_sorted = []
-    for i in sorted_index:
-        boxes_sorted.append(boxes[i])
-    boxes_sorted = np.array(boxes_sorted)
-
-
-    # initialize the list of picked indexes	
-    pick = []
-
-    # grab the coordinates of the bounding boxes
-    x1 = boxes_sorted[:,0]
-    y1 = boxes_sorted[:,1]
-    x2 = boxes_sorted[:,2]
-    y2 = boxes_sorted[:,3]
-
-    # compute the area of the bounding boxes and sort the bounding
-    # boxes by the bottom-right y-coordinate of the bounding box
-    area = (x2 - x1 + 1) * (y2 - y1 + 1)
-    idxs = np.array([i for i in range(len(y2))])
-
-    # keep looping while some indexes still remain in the indexes
-    # list
-    while len(idxs) > 0:
-        # grab the last index in the indexes list and add the
-        # index value to the list of picked indexes
-        last = len(idxs) - 1
-        i = idxs[last]
-
-
-        # find the largest (x, y) coordinates for the start of
-        # the bounding box and the smallest (x, y) coordinates
-        # for the end of the bounding box
-        xx1 = np.maximum(x1[i], x1[idxs[:last]])
-        yy1 = np.maximum(y1[i], y1[idxs[:last]])
-        xx2 = np.minimum(x2[i], x2[idxs[:last]])
-        yy2 = np.minimum(y2[i], y2[idxs[:last]])
-
-        # compute the width and height of the bounding box
-        w = np.maximum(0, xx2 - xx1 + 1)
-        h = np.maximum(0, yy2 - yy1 + 1)
-
-        # compute the ratio of overlap
-        overlap = (w * h) / area[idxs[:last]]
-        overlap_box_indices = idxs[np.where(overlap > overlapThresh)[0]]
-        pick.append(i)
-
-        # delete all indexes from the index list that have
-        idxs = np.delete(idxs, np.concatenate(([last],
-	        np.where(overlap > overlapThresh)[0])))
-
-	# return only the bounding boxes that were picked using the
-	# integer data type
-    picked_boxes = []
-    for p in pick:
-        picked_boxes.append(boxes_sorted[p])
-    #converts back to xywhs form
-    for i in range(np.array(picked_boxes).shape[0]):
-        picked_boxes[i] = xyxys_to_xywhs(picked_boxes[i])
-    return np.array(picked_boxes)
+       
 
 
 def iou_sampling(pruned_anchor_box_indices, iou_scores, iou_upper=0.7, iou_lower=0.3):
@@ -253,7 +155,7 @@ def iou_sampling(pruned_anchor_box_indices, iou_scores, iou_upper=0.7, iou_lower
 
     pos_res = np.array(pos_res)
     if pos_res.shape[0] > 128:
-        pos_res = np.random.choice(pos_res, size=128, replace = False)
+        pos_res = pos_res[np.random.choice([i for i in range(pos_res.shape[0])], size=128, replace = False)]
     pos_count = pos_res.shape[0]
 
     #This part gets the negatives
@@ -275,7 +177,7 @@ def prune_a_box(anchor_boxes_flat, iou_scores):
 
 def create_ytrue_train(img, labels, iou_upper = 0.7, iou_lower = 0.3):
     img_arr = np.array(img)
-    anchor_boxes = generate_anchor_boxes(img_arr.shape[1], img_arr.shape[0], stride=16, scale=[56,128,256], ratio=[0.5,1,2], no_exceed_bound = True)
+    anchor_boxes = generate_anchor_boxes(img_arr.shape[1], img_arr.shape[0], stride=16, scale=[64,128,256], ratio=[0.5,1,2], no_exceed_bound = True)
     gt_box_arr = []
     for label in labels:
         gtclass, gtx, gty, gtw, gth = label
