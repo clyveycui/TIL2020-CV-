@@ -2,6 +2,8 @@ import tensorflow as tf
 import rpn_training
 import data_gen
 import numpy as np
+from roi_pooling import ROIPoolingLayer
+from data_gen import generate_anchor_boxes, preprocess_anchor_boxes
 
 def xywhs_to_xyxys(box):
     #only used for NMS pruning
@@ -98,42 +100,52 @@ def non_max_suppression_fast(boxes, overlapThresh):
         picked_boxes[i] = xyxys_to_xywhs(picked_boxes[i])
     return np.array(picked_boxes)
 
-def get_rp(ypred, anchor_boxes, max_boxes = -1, score_thresh = 0.7):
+def get_rp(ypred,anchor_boxes, max_boxes = -1, score_thresh = 0.7):
     #ypred is a flattened depth first. so it is h1w1s1r1, h1w1s1r2...h1w2s1r1, h1w2s1r2 ... h2w1s1r1 ...
     #but the way we store anchorboxes is by width first, then height
 
     #returns a np array containing all chosen regions in the form of [x,y,w,h,score]
     proposed_region = []
-    ypred_class = ypred[:,:2]
-    ypred_regr = ypred[:,2:]
-    for i in range(ypred.shape[0]):
-        if ypred_class[i,0] > 0.7:
-            q = i // (60*9)
-            sr = i % 9
-            p = (i // 9) % 60
-            box = anchor_boxes[p,q,sr]
-            xa = box[0]
-            ya = box[1]
-            wa = box[2]
-            ha = box[3]
-            dx = ypred_regr[i,0]
-            dy = ypred_regr[i,1]
-            dw = ypred_regr[i,2]
-            dh = ypred_regr[i,3]
-            x = dx * wa + xa
-            y = dy * ha + ya
-            w = wa * np.exp(dw)
-            h = ha * np.exp(dh)
-            score = ypred_class[i,0]
-            proposed_region.append([x,y,w,h,score])
+    res = []
+    ypred_class = ypred[:,:,:2]
+    ypred_regr = ypred[:,:,2:]
+    for j in range(ypred.shape[0]):
+        proposed_region = []
+        for i in range(ypred.shape[1]):
+            if ypred_class[j,i,0] > 0.7:
+                q = i // (60*9)
+                sr = i % 9
+                p = (i // 9) % 60
+                box = anchor_boxes[p,q,sr]
+                xa = box[0]
+                ya = box[1]
+                wa = box[2]
+                ha = box[3]
+                dx = ypred_regr[j,i,0]
+                dy = ypred_regr[j,i,1]
+                dw = ypred_regr[j,i,2]
+                dh = ypred_regr[j,i,3]
+                x = dx * wa + xa
+                y = dy * ha + ya
+                w = wa * np.exp(dw)
+                h = ha * np.exp(dh)
+                score = ypred_class[i,0]
+                proposed_region.append([x,y,w,h,score])
 
-    proposed_region = non_max_suppression_fast(np.array(proposed_region), overlapThresh = 0.5)
-    if max_boxes > 0:
-        return proposed_region[:max_boxes]
-    else:
-        return proposed_region
+        proposed_region = non_max_suppression_fast(np.array(proposed_region), overlapThresh = 0.5)
+        if max_boxes > 0:
+            while proposed_region.shape[0] != max_boxes:
+                n = proposed_region.shape[0]
+                if n > max_boxes:
+                    proposed_region = proposed_region[:max_boxes]
+                elif n < max_boxes:
+                    i = np.random.randint(n)
+                    proposed_region = np.append(proposed_region, proposed_region[i])
+        res.append(proposed_region)
+    return tf.constant(res, dtype = "float32")
 
-def get_proposal_target(proposed_region, gt_boxes, N = 16, fg_iou_thresh = 0.5, bg_iou_upper_thresh = 0.5, bg_iou_lower_thresh = 0.1 ):
+
+def get_proposal_target(proposed_region, gt_boxes, N = 9, fg_iou_thresh = 0.5, bg_iou_upper_thresh = 0.5, bg_iou_lower_thresh = 0.1 ):
     #assumes gt_box to be of the form [[category, x,y,w,h],[category, x,y,w,h]...]
     #assumes proposed_region to be of the form [[x,y,w,h,score],[x,y,w,h,score]...]
     classes = 5
@@ -143,21 +155,24 @@ def get_proposal_target(proposed_region, gt_boxes, N = 16, fg_iou_thresh = 0.5, 
     regression_targets = np.zeros((2*N, 4*classes))
     regression_mask = np.zeros((2*N, 4*classes))
     class_targets = np.zeros((2*N,classes+1))
-    iou_scores = np.zeros((gt_boxes.shape[0], proposed_region.shape))
+    iou_scores = np.zeros((gt_boxes.shape[0], proposed_region.shape[0]))
     for i in range(iou_scores.shape[0]):
         for j in range(iou_scores.shape[1]):
-            iou_scores[i,j] = data_gen.iou(proposed_region[j][:4], gt_boxes[i][1:], img_w = 1.0, img_h = 1.0)
+            iou_scores[i,j] = data_gen.get_overlap(proposed_region[j][:4], gt_boxes[i][1:])
+            iou_scores[i,j] = data_gen.get_overlap(proposed_region[j][:4], gt_boxes[i][1:])
     iou_score_squashed = []
+
     for j in range(iou_scores.shape[1]):
         x = np.argsort(iou_scores[:,j])[-1]
-        iou_score_squashed.append([iou_scores[x], x])
+        iou_score_squashed.append([iou_scores[x,j], x])
+    iou_score_squashed = np.array(iou_score_squashed)
     #Now, iou_score_squashed is a n*2 list containing the max iou score and the index of the gtbox that gives the max iou score for each region
-    sorted_index_by_score = np.argsort(iou_score_squashed, axis=0)[0]
-    for i in range(min(N,proposed_region.shape[0]//2)):
+    sorted_index_by_score = np.argsort(iou_score_squashed[:,0], axis=0)
+    for i in range(min(N,proposed_region.shape[0])):
         fg_index = sorted_index_by_score[-i-1]
         bg_index = sorted_index_by_score[i]
         if iou_score_squashed[fg_index][0] >= fg_iou_thresh:
-            foreground_regions.append([fg_index, iou_score_squashed[fg_index][1]])
+            foreground_regions.append([fg_index, int(iou_score_squashed[fg_index][1])])
         if iou_score_squashed[bg_index][0] >= bg_iou_lower_thresh and iou_score_squashed[bg_index][0] < bg_iou_upper_thresh:
             background_regions.append(bg_index)
     while len(foreground_regions) < N:
@@ -166,8 +181,9 @@ def get_proposal_target(proposed_region, gt_boxes, N = 16, fg_iou_thresh = 0.5, 
         background_regions.append(np.random.choice(background_regions))
     for i in range(N):
         rp = proposed_region[foreground_regions[i][0]]
-        gt = gt_boxes[foreground_region[i][1]]
+        gt = gt_boxes[foreground_regions[i][1]]
         gtc, gtx, gty, gtw, gth = gt
+        gtc = int(gtc)
         rx, ry, rw, rh, _ = rp
         dx = (gtx - rx)*1.0/rw
         dy = (gty - ry)*1.0/rh
@@ -190,10 +206,14 @@ def get_proposal_target(proposed_region, gt_boxes, N = 16, fg_iou_thresh = 0.5, 
     return np.array(selected_regions), regression_targets, regression_mask, class_targets 
 
 
-#Source : https://gist.github.com/Jsevillamol/0daac5a6001843942f91f2a3daea27a7
-
 model_path = ""
 rpn = tf.keras.models.load_model(load_model_path, custom_objects={'custom_loss':rpn_training.custom_loss})
+rpn.trainable = False
+
+input_shape = (640, 960, 3)
+anchor_boxes = generate_anchor_boxes(960,640,16,scale=[64,128,256])
+proposed_regions = None
+
 
 model = tf.keras.applications.vgg16.VGG16(input_shape = (640,960,3),weights="imagenet", include_top=False)
 model.layers.pop()
@@ -202,3 +222,17 @@ for layer in model.layers[:-1]:
     model_2.add(layer)
 for layer in model_2.layers:
     layer.trainable = False
+
+inputs = keras.Input(shape = input_shape)
+fm = model_2(inputs)
+rpn_o = rpn(inputs)
+rp = get_rp(rpn_o, anchor_boxes, max_boxes = 18)
+print(rp)
+##Need to convert rp into a tensor of shape (batch_size, n_rois, 4) in the form of (xmin, ymin, xmax, ymax)
+#x = ROIPoolingLayer(7,7)([fm, rp])
+#x = tf.keras.layers.Dense(4096)(x)
+#x = tf.keras.layers.Dense(4096)(x)
+#object_classification = tf.keras.layers.Dense(6)(x)
+#object_classification = layers.Softmax(axis=-1)(object_classification)
+#bbox_regr = tf.keras.layers.Dense(24)(x)
+

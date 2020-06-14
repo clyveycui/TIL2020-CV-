@@ -46,6 +46,35 @@ def iou(anchor_box, ground_truth_box):
     u_area = (xa_max-xa_min)*(ya_max-ya_min) + (xg_max-xg_min)*(yg_max-yg_min) - i_area
     return (i_area/u_area)
 
+def get_overlap(anchor_box, ground_truth_box):
+    #anchor_box, ground_truth_box are size 4 arrays in the form [x_centre, y_centre, width, height]
+    #img_w, img_h are the pixel dimensions of the image
+
+    #returns a float representing the percentage of the anchor box overlapping with the gt box
+
+    xa_min = max(anchor_box[0]-0.5*anchor_box[2], 0)
+    ya_min = max(anchor_box[1]-0.5*anchor_box[3], 0)
+    xa_max = min(anchor_box[0]+0.5*anchor_box[2], 1)
+    ya_max = min(anchor_box[1]+0.5*anchor_box[3], 1)
+    xg_min = max(ground_truth_box[0]-0.5*ground_truth_box[2], 0)
+    yg_min = max(ground_truth_box[1]-0.5*ground_truth_box[3], 0)
+    xg_max = min(ground_truth_box[0]+0.5*ground_truth_box[2], 1)
+    yg_max = min(ground_truth_box[1]+0.5*ground_truth_box[3], 1)
+
+    i_xmin = max(xa_min,xg_min)
+    i_ymin = max(ya_min,yg_min)
+    i_xmax = min(xa_max,xg_max)
+    i_ymax = min(ya_max,yg_max)
+
+    if (i_xmin>=i_xmax or i_ymin>=i_ymax):
+        return 0
+
+    i_area = (i_xmax-i_xmin)*(i_ymax-i_ymin)
+    u_area = (xa_max-xa_min)*(ya_max-ya_min)
+    return (i_area/u_area)
+
+
+
 def get_anchor_points(w,h,stride):
     #Takes w, h of image as int or floats 
     #takes stride as int/float
