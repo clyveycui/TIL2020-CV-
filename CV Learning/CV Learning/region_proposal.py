@@ -32,8 +32,8 @@ class RegionProposalLayer(Layer):
         max_boxes = 18
         ypred_class = ypred[:,:2]
         ypred_regr = ypred[:,2:]
-        sorted_by_score = tf.argsort(ypred_class[:,0], direction='Descending')
-        for i in sorted_by_score:
+        sorted_by_score = tf.argsort(ypred_class[:,0], direction='DESCENDING')
+        for i in sorted_by_score[:1000]:
             q = i // (60*9)
             sr = i % 9
             p = (i // 9) % 60
@@ -51,7 +51,7 @@ class RegionProposalLayer(Layer):
             w = wa * np.exp(dw)
             h = ha * np.exp(dh)
             score = ypred_class[i,0]
-            proposed_region.append(proposed_region, [x,y,w,h,score])
+            proposed_region.append([x,y,w,h,score])
 
         proposed_region = non_max_suppression_fast(np.array(proposed_region), overlapThresh = 0.5)
         proposed_region = proposed_region[:min(proposed_region.shape[0], max_boxes)]
@@ -63,7 +63,7 @@ class RegionProposalLayer(Layer):
                 q = i // (60*9)
                 sr = i % 9
                 p = (i // 9) % 60
-                box = self.anchor_boxes[p,q,sr]
+                box = anchor_boxes[p,q,sr]
                 xa = box[0]
                 ya = box[1]
                 wa = box[2]
@@ -78,7 +78,7 @@ class RegionProposalLayer(Layer):
                 h = ha * np.exp(dh)
                 score = ypred_class[i,0]
                 new_boxes.append([x,y,w,h,score])
-            proposed_region = np.append(proposed_region, new_boxes)
+            proposed_region = np.append(proposed_region, new_boxes, axis=0)
         return tf.constant(proposed_region, dtype = "float32")
 
     @staticmethod
