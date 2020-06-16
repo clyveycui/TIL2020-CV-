@@ -153,7 +153,7 @@ def preprocess_anchor_boxes(anchor_boxes):
     #return arr_res_np, arr_shape
        
 
-
+#REDO THIS
 def iou_sampling(pruned_anchor_box_indices, iou_scores, iou_upper=0.7, iou_lower=0.3):
     #pruned_anchor_box_indices is the index of all anchor boxes
     #iou_scores is the unpruned iou_scores
@@ -167,16 +167,18 @@ def iou_sampling(pruned_anchor_box_indices, iou_scores, iou_upper=0.7, iou_lower
     pos_res = []
     pos_case_indices = []
     candidate_indices = pruned_anchor_box_indices
+    gtbox_with_largest_score = np.argmax(iou_scores, axis=-1)
     indices_to_del = []
-    for i,_ in enumerate(iou_scores):
-        idx = np.argmax(iou_scores[i])
+    for i,scores in enumerate(iou_scores):
+        idx = np.argmax(scores)
         if iou_scores[i,idx] != 0:
-          pos_res.append([idx,i])
+            pos_res.append([idx,i])
         pos_case_indices.append(idx)
         candidate_indices = candidate_indices[candidate_indices != idx]
         for f,j in enumerate(candidate_indices):
             if iou_scores[i,j] > iou_upper:
-                pos_res.append([j,i])
+                gt_box_index = gtbox_with_largest_score[j]
+                pos_res.append([j,gt_box_index])
                 indices_to_del.append(f)
                 pos_case_indices.append(j)
         candidate_indices = np.delete(candidate_indices, indices_to_del)
@@ -189,7 +191,7 @@ def iou_sampling(pruned_anchor_box_indices, iou_scores, iou_upper=0.7, iou_lower
 
     #This part gets the negatives
     negative_candidate_indices = [i for i in range(iou_scores.shape[1]) if i not in pos_case_indices ]
-    neg_candidates = [i for i in negative_candidate_indices if np.all(iou_scores[:,i]<iou_lower) and np.all(iou_scores[:,i]>=0)]
+    neg_candidates = [i for i in negative_candidate_indices if iou_scores[gtbox_with_largest_score[i],i]<iou_lower and iou_scores[gtbox_with_largest_score[i],i]>=0]
     neg_res = []
     if len(neg_candidates) <= 256-pos_count:
         neg_res = neg_candidates
@@ -204,18 +206,17 @@ def prune_a_box(anchor_boxes_flat, iou_scores):
 
 
 
-def create_ytrue_train(img, labels, iou_upper = 0.7, iou_lower = 0.3):
+def create_ytrue_train(img, labels, anchor_boxes, iou_upper = 0.7, iou_lower = 0.3):
     img_arr = np.array(img)
-    anchor_boxes = generate_anchor_boxes(img_arr.shape[1], img_arr.shape[0], stride=16, scale=[64,128,256], ratio=[0.5,1,2], no_exceed_bound = True)
     gt_box_arr = []
     for label in labels:
-        gtclass, gtx, gty, gtw, gth = label
-        gtclass = int(gtclass)
-        #Might change depends on how label is given
+        _, gtx, gty, gtw, gth = label
         gt_bbox = [gtx, gty, gtw, gth]
         gt_box_arr.append(gt_bbox)
 
-    anchor_flat, anchorbox_arr_shape = preprocess_anchor_boxes(anchor_boxes)
+    #This just flattens the anchor_boxes array
+    anchor_flat, _= preprocess_anchor_boxes(anchor_boxes)
+
     iou_score = np.zeros((len(gt_box_arr), len(anchor_flat)))
     for i,gt_box in enumerate(gt_box_arr):
         for j,anchor in enumerate(anchor_flat):
@@ -223,6 +224,7 @@ def create_ytrue_train(img, labels, iou_upper = 0.7, iou_lower = 0.3):
                 iou_score[i,j] = -1
             else:
                 iou_score[i,j] = iou(anchor, gt_box)
+    #here is iou sampling
     pos_indices, neg_indices = prune_a_box(anchor_flat, iou_score)
     y_class_true = np.zeros((anchor_flat.shape[0], 2))
     y_regr_true = np.zeros((anchor_flat.shape[0], 4))
@@ -235,8 +237,8 @@ def create_ytrue_train(img, labels, iou_upper = 0.7, iou_lower = 0.3):
         y_class_true[ai, 1] = 0
         dx = (gt_box[0]-a_box[0])/a_box[2]
         dy = (gt_box[1]-a_box[1])/a_box[3]
-        dw = log(gt_box[2]/a_box[2])
-        dh = log(gt_box[3]/a_box[3])
+        dw = np.log(gt_box[2]/a_box[2])
+        dh = np.log(gt_box[3]/a_box[3])
 
         y_regr_true[ai,0] = dx
         y_regr_true[ai,1] = dy
@@ -247,103 +249,3 @@ def create_ytrue_train(img, labels, iou_upper = 0.7, iou_lower = 0.3):
         y_class_true[ai,1] = 1
 
     return np.concatenate([y_class_true, y_regr_true], -1)
-
-class TILSequence(Sequence):
-    def __init__(self, pickle_file, json_annotation_file, batch_size, augment_fn, testmode=False):
-        self._prepare_data(pickle_file, json_annotation_file)
-        self.batch_size = batch_size
-        self.augment_fn = augment_fn
-        self.input_wh = (960,640,3)
-        self.testmode = testmode
-    
-    def _prepare_data(self, pickle_file, json_annotation_file):
-        with open(pickle_file, 'rb') as f:
-            imgs_dict = pickle.load(f)
-        data_dict = {}
-        for imgid in imgs_dict:
-            data_dict[imgid] = []
-        with open(json_annotation_file, 'r') as f:
-            annotations_dict = json.load(f)
-        #annotations_list is a list containing all annotations in the form of dictionaries     {
-        #  "area": area_of_bounding_box,
-        #  "iscrowd": ?,
-        #  "id": id_of_annotation,
-        #  "image_id": id_of_corresponding_image,
-        #  "category_id": category_id_of_object,
-        #  "bbox": [x,y,w,h]
-        #}
-        annotations_list = annotations_dict['annotations']
-        for annotation in annotations_list:
-            try:
-                img_id = str(annotation['image_id'])
-                imwidth = imgs_dict[img_id][1]
-                imheight = imgs_dict[img_id][2]
-                c = annotation['category_id'] # TODO: make sure that category ids start from 1, not 0. Need to set back_ground as another category
-                boxleft,boxtop,boxwidth,boxheight = annotation['bbox']
-                box_cenx = boxleft + boxwidth/2.
-                box_ceny = boxtop + boxheight/2.
-                x,y,w,h = box_cenx/imwidth, box_ceny/imheight, boxwidth/imwidth, boxheight/imheight
-                data_dict[img_id].append( [c,x,y,w,h] )
-            except KeyError:
-                continue
-        #anchor_boxes = generate_anchor_boxes(960,640, 16, scale = [128,256,512], ratio = [0.5,1.0,2.0], no_exceed_bound = True)
-
-        self.x, self.y, self.ids = [], [], []
-        for img_id, labels in data_dict.items():
-            self.x.append( imgs_dict[img_id][0])
-            self.y.append( np.array(labels) )
-            self.ids.append( img_id )
-
-    def __len__(self):
-        return int(np.ceil(len(self.x) / float(self.batch_size)))
-  
-    def __getitem__(self, idx):
-        #return self.get_batch_test(idx) if self.testmode else self.get_batch(idx)
-        return self.get_batch(idx)
-
-    def preprocess_fn(self, x):
-        return x/255.0
-
-
-    #def get_batch_test(self, idx):
-    #    batch_x = self.x[idx * self.batch_size:(idx + 1) * self.batch_size]
-    #    batch_y = self.y[idx * self.batch_size:(idx + 1) * self.batch_size]
-    #    batch_ids = self.ids[idx * self.batch_size:(idx + 1) * self.batch_size]
-
-    #    x_acc, y_acc = [], {}
-    #    original_img_dims = []
-    #    with Pool(self.batch_size) as p:
-    #        # Read in the PIL objects from filepaths
-    #        batch_x = p.map(load_img, batch_x)
-    #    for i, image in enumerate(batch_x):
-    #        batch_x[i] = image.resize((960,640))
-    #    for x,y in zip( batch_x, batch_y ):
-    #        W,H = x.size
-    #        original_img_dims.append( (W,H) )
-    #        x_aug, y_aug = self.augment_fn( x, y )
-    #        if x_aug.size != self.input_wh[:2]:
-    #            x_aug.resize( self.input_wh )
-    #        x_acc.append( np.array(x_aug) )
-    #        y_dict = self.label_encoder( y_aug )
-    #        for dimkey, label in y_dict.items():
-    #            if dimkey not in y_acc:
-    #                y_acc[dimkey] = []
-    #            y_acc[dimkey].append( label )
-
-    #    return batch_ids, original_img_dims, self.preprocess_fn( np.array( x_acc ) ), { dimkey: np.array( gt_tensor ) for dimkey, gt_tensor in y_acc.items() }
-
-    def get_batch(self, idx):
-        batch_x = self.x[idx * self.batch_size:(idx + 1) * self.batch_size]
-        batch_y = self.y[idx * self.batch_size:(idx + 1) * self.batch_size]
-
-        x_acc, y_acc = [], []
-    
-        for x,y in zip( batch_x, batch_y ):
-            x_aug, y_aug = self.augment_fn( Image.fromarray(x, 'RGB'), y )
-            if x_aug.size != (960,640):
-                x_aug = x_aug.resize( (960,640) )
-            x_acc.append( np.array(x_aug) )
-            ytrue = create_ytrue_train(x_aug, y_aug, iou_upper = 0.7, iou_lower = 0.3)
-            y_acc.append( ytrue )
-
-        return self.preprocess_fn( np.array( x_acc ) ), np.array( y_acc )
