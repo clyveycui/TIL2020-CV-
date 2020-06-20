@@ -4,7 +4,7 @@
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>c172cebd-1c6a-4073-bce6-6763f67f3481</ProjectGuid>
     <ProjectHome>.</ProjectHome>
-    <StartupFile>module2.py</StartupFile>
+    <StartupFile>test_rpn.py</StartupFile>
     <SearchPath>
     </SearchPath>
     <WorkingDirectory>.</WorkingDirectory>
@@ -24,17 +24,23 @@
     <Compile Include="data_gen.py">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="module2.py">
+    <Compile Include="create_ytrue.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="classification_network.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="create_traing_data_rcnn.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="test_rpn.py">
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="rpn_training.py" />
     <Compile Include="img_aug.py">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="module1.py">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="data_gen_no_sequence.py">
+    <Compile Include="roi_pooling.py">
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="data_cleaning.py">

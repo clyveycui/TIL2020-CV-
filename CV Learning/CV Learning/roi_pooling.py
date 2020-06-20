@@ -1,11 +1,6 @@
 from tensorflow.keras.layers import Layer
 import tensorflow as tf
 
-
-
-import tensorflow as tf
-from tensorflow.keras.layers import Layer
-
 class ROIPoolingLayer(Layer):
     """ Implements Region Of Interest Max Pooling 
         for channel-first images and relative bounding box coordinates
@@ -27,6 +22,14 @@ class ROIPoolingLayer(Layer):
         self.pooled_width = pooled_width
         
         super(ROIPoolingLayer, self).__init__(**kwargs)
+
+    def get_config(self):
+        config = super().get_config().copy()
+        config.update({
+            'pooled_height': self.pooled_height,
+            'pooled_width': self.pooled_width,
+        })
+        return config
         
     def compute_output_shape(self, input_shape):
         """ Returns the shape of the ROI Layer output

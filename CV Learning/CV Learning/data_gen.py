@@ -46,6 +46,29 @@ def iou(anchor_box, ground_truth_box):
     u_area = (xa_max-xa_min)*(ya_max-ya_min) + (xg_max-xg_min)*(yg_max-yg_min) - i_area
     return (i_area/u_area)
 
+def iou_modified(anchor_box, ground_truth_box):
+
+    xa_min = anchor_box[0]
+    ya_min = anchor_box[1]
+    xa_max = anchor_box[2]
+    ya_max = anchor_box[3]
+    xg_min = ground_truth_box[1]
+    yg_min = ground_truth_box[2]
+    xg_max =(ground_truth_box[1] + ground_truth_box[3])
+    yg_max =(ground_truth_box[2] + ground_truth_box[4])
+
+    i_xmin = max(xa_min,xg_min)
+    i_ymin = max(ya_min,yg_min)
+    i_xmax = min(xa_max,xg_max)
+    i_ymax = min(ya_max,yg_max)
+
+    if (i_xmin>=i_xmax or i_ymin>=i_ymax):
+        return 0
+
+    i_area = (i_xmax-i_xmin)*(i_ymax-i_ymin)
+    u_area = (xa_max-xa_min)*(ya_max-ya_min) + (xg_max-xg_min)*(yg_max-yg_min) - i_area
+    return (i_area/u_area)
+
 def get_overlap(anchor_box, ground_truth_box):
     #anchor_box, ground_truth_box are size 4 arrays in the form [x_centre, y_centre, width, height]
     #img_w, img_h are the pixel dimensions of the image
@@ -167,7 +190,8 @@ def iou_sampling(pruned_anchor_box_indices, iou_scores, iou_upper=0.7, iou_lower
     pos_res = []
     pos_case_indices = []
     candidate_indices = pruned_anchor_box_indices
-    gtbox_with_largest_score = np.argmax(iou_scores, axis=-1)
+    gtbox_with_largest_score = np.argmax(iou_scores, axis=0)
+    print(gtbox_with_largest_score)
     indices_to_del = []
     for i,scores in enumerate(iou_scores):
         idx = np.argmax(scores)

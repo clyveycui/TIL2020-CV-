@@ -46,6 +46,7 @@ def get_data(pickle_file, json_file):
     anchor_boxes = data_gen.generate_anchor_boxes(480, 480, stride=16, scale=[64,128,256], ratio=[0.5,1,2], no_exceed_bound = True)
     x, y = [], []
     for img_id, labels in data_dict.items():
+        print(img_id)
         x.append( imgs_dict[img_id][0])
         #most stuff happens in create_ytrue_train
         y.append( data_gen.create_ytrue_train( imgs_dict[img_id][0], np.array(labels),anchor_boxes, iou_upper=0.7, iou_lower = 0.3 ))
